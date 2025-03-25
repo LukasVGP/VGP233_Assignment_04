@@ -18,15 +18,22 @@ public class BaseAI : MonoBehaviour
     [SerializeField] protected LayerMask obstacleLayer;
     [SerializeField] protected float gravity = 20f;
 
+    [Header("Chase Settings")]
+    [SerializeField] protected float chaseSpeed = 5f;
+    [SerializeField] protected float chaseRadius = 8f;
+    [SerializeField] protected float loseInterestDistance = 15f;
+    [SerializeField] protected bool canChasePlayer = true;
+
     protected AIState currentState = AIState.Idle;
     protected Vector3 targetPosition;
     protected CharacterController characterController;
     protected float verticalVelocity = 0f;
+    protected bool isChasing = false;
+    protected float defaultMoveSpeed;
 
     protected virtual void Awake()
     {
         characterController = GetComponent<CharacterController>();
-
         if (characterController == null)
         {
             characterController = gameObject.AddComponent<CharacterController>();
@@ -41,6 +48,8 @@ public class BaseAI : MonoBehaviour
             if (player != null)
                 playerTransform = player.transform;
         }
+
+        defaultMoveSpeed = moveSpeed;
     }
 
     protected virtual void Update()
@@ -51,12 +60,51 @@ public class BaseAI : MonoBehaviour
 
     protected virtual void UpdateState()
     {
-        // Base implementation - override in child classes
+        if (canChasePlayer && playerTransform != null)
+        {
+            float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
+
+            if (currentState == AIState.Chase)
+            {
+                // Check if we should stop chasing
+                if (distanceToPlayer > loseInterestDistance || !CanSeePlayer())
+                {
+                    isChasing = false;
+                    moveSpeed = defaultMoveSpeed;
+                    OnChaseEnd();
+                }
+            }
+            else
+            {
+                // Check if we should start chasing
+                if (distanceToPlayer <= chaseRadius && CanSeePlayer())
+                {
+                    currentState = AIState.Chase;
+                    isChasing = true;
+                    moveSpeed = chaseSpeed;
+                    OnChaseBegin();
+                }
+            }
+        }
     }
 
     protected virtual void UpdateBehavior()
     {
-        // Base implementation - override in child classes
+        if (currentState == AIState.Chase && playerTransform != null)
+        {
+            // Chase the player
+            MoveTowards(playerTransform.position);
+        }
+    }
+
+    protected virtual void OnChaseBegin()
+    {
+        // Override in child classes if needed
+    }
+
+    protected virtual void OnChaseEnd()
+    {
+        // Override in child classes if needed
     }
 
     protected bool CanSeePlayer()
@@ -74,6 +122,7 @@ public class BaseAI : MonoBehaviour
                 return true;
             }
         }
+
         return false;
     }
 
@@ -110,13 +159,26 @@ public class BaseAI : MonoBehaviour
     {
         if (other.CompareTag("Player"))
         {
-            GameManager.Instance.GameOver();
+            PlayerController player = other.GetComponent<PlayerController>();
+            if (player != null && !player.IsInvulnerable())
+            {
+                player.TakeDamage(transform.position);
+            }
         }
     }
 
     protected virtual void OnDrawGizmosSelected()
     {
+        // Detection radius
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, detectionRadius);
+
+        // Chase radius
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, chaseRadius);
+
+        // Lose interest distance
+        Gizmos.color = new Color(1f, 0.5f, 0f, 0.3f); // Orange with transparency
+        Gizmos.DrawWireSphere(transform.position, loseInterestDistance);
     }
 }

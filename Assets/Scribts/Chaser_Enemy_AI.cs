@@ -4,9 +4,8 @@ public class ChaserAI : BaseAI
 {
     [Header("Chaser AI Settings")]
     [SerializeField] private float detectionRange = 8f;
-    [SerializeField] private float loseInterestDistance = 15f;
-
-    private bool isChasing = false;
+    // Removed duplicate loseInterestDistance field
+    // Removed duplicate isChasing field
 
     protected override void UpdateState()
     {

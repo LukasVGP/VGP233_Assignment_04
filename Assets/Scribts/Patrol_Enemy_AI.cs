@@ -2,113 +2,176 @@ using UnityEngine;
 
 public class PatrolAI : BaseAI
 {
+    public enum PatrolMode
+    {
+        Waypoints,
+        LocationMap
+    }
+
     [Header("Patrol AI Settings")]
+    [SerializeField] private PatrolMode patrolMode = PatrolMode.Waypoints;
+
+    [Header("Waypoint Settings")]
     [SerializeField] private AIWaypointSystem waypointSystem;
-    [SerializeField] private float patrolSpeed = 2f;
-    [SerializeField] private float chaseSpeed = 4f;
-    [SerializeField] private float chaseRadius = 8f;
-    [SerializeField] private float loseInterestDistance = 15f;
     [SerializeField] private float waypointReachedDistance = 0.5f;
 
+    [Header("Location Map Settings")]
+    [SerializeField] private AILocationMap locationMap;
+    [SerializeField] private string[] patrolAreaSequence; // Names of areas to patrol in sequence
+    [SerializeField] private float areaStayTime = 5f; // How long to stay in each area
+
     private int currentWaypointIndex = 0;
-    private bool isChasing = false;
+    private int currentAreaIndex = 0;
+    private float areaTimer = 0f;
+    private bool isMovingToNextArea = true;
 
     protected override void Awake()
     {
         base.Awake();
 
-        // Find waypoint system if not assigned
-        if (waypointSystem == null)
+        // Find systems if not assigned
+        if (patrolMode == PatrolMode.Waypoints && waypointSystem == null)
         {
             waypointSystem = GetComponentInParent<AIWaypointSystem>();
+            if (waypointSystem == null)
+            {
+                waypointSystem = FindObjectOfType<AIWaypointSystem>();
+            }
         }
 
-        // Set initial speed
-        moveSpeed = patrolSpeed;
+        if (patrolMode == PatrolMode.LocationMap && locationMap == null)
+        {
+            locationMap = GetComponentInParent<AILocationMap>();
+            if (locationMap == null)
+            {
+                locationMap = FindObjectOfType<AILocationMap>();
+            }
+        }
+
+        // Set initial target
+        if (patrolMode == PatrolMode.LocationMap && locationMap != null && patrolAreaSequence.Length > 0)
+        {
+            SetNewAreaTarget();
+        }
     }
 
     protected override void UpdateState()
     {
-        if (playerTransform == null) return;
+        base.UpdateState(); // Handle chase detection
 
-        float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
-
-        if (currentState == AIState.Chase)
+        if (!isChasing)
         {
-            // Check if we should stop chasing
-            if (distanceToPlayer > loseInterestDistance || !CanSeePlayer())
-            {
-                currentState = AIState.Patrol;
-                moveSpeed = patrolSpeed;
-                isChasing = false;
-            }
-        }
-        else
-        {
-            // Check if we should start chasing
-            if (distanceToPlayer <= chaseRadius && CanSeePlayer())
-            {
-                currentState = AIState.Chase;
-                moveSpeed = chaseSpeed;
-                isChasing = true;
-            }
+            currentState = AIState.Patrol;
         }
     }
 
     protected override void UpdateBehavior()
     {
-        if (currentState == AIState.Chase && playerTransform != null)
+        if (currentState == AIState.Chase)
         {
-            // Chase the player
-            MoveTowards(playerTransform.position);
+            base.UpdateBehavior(); // Use base chase behavior
         }
         else if (currentState == AIState.Patrol)
         {
-            // Patrol between waypoints
-            if (waypointSystem == null || waypointSystem.GetWaypointCount() == 0)
+            if (patrolMode == PatrolMode.Waypoints)
             {
-                currentState = AIState.Idle;
-                return;
+                PatrolWaypoints();
             }
-
-            Transform currentWaypoint = waypointSystem.GetWaypoint(currentWaypointIndex);
-            if (currentWaypoint != null)
+            else
             {
-                MoveTowards(currentWaypoint.position);
+                PatrolLocationMap();
+            }
+        }
+    }
 
-                // Check if we've reached the waypoint
-                float distanceToWaypoint = Vector3.Distance(transform.position, currentWaypoint.position);
-                if (distanceToWaypoint < waypointReachedDistance)
+    private void PatrolWaypoints()
+    {
+        // Patrol between waypoints
+        if (waypointSystem == null || waypointSystem.GetWaypointCount() == 0)
+        {
+            currentState = AIState.Idle;
+            return;
+        }
+
+        Transform currentWaypoint = waypointSystem.GetWaypoint(currentWaypointIndex);
+        if (currentWaypoint != null)
+        {
+            MoveTowards(currentWaypoint.position);
+
+            // Check if we've reached the waypoint
+            float distanceToWaypoint = Vector3.Distance(transform.position, currentWaypoint.position);
+            if (distanceToWaypoint < waypointReachedDistance)
+            {
+                // Move to the next waypoint
+                currentWaypointIndex = (currentWaypointIndex + 1) % waypointSystem.GetWaypointCount();
+            }
+        }
+    }
+
+    private void PatrolLocationMap()
+    {
+        if (locationMap == null || patrolAreaSequence.Length == 0)
+        {
+            currentState = AIState.Idle;
+            return;
+        }
+
+        if (isMovingToNextArea)
+        {
+            // Moving to the next area's center
+            string currentAreaName = patrolAreaSequence[currentAreaIndex];
+            AILocationMap.PatrolArea area = locationMap.GetAreaByName(currentAreaName);
+
+            if (area != null)
+            {
+                MoveTowards(area.centerPoint);
+
+                // Check if we've reached the area
+                float distanceToArea = Vector3.Distance(transform.position, area.centerPoint);
+                if (distanceToArea < waypointReachedDistance)
                 {
-                    // Move to the next waypoint
-                    currentWaypointIndex = (currentWaypointIndex + 1) % waypointSystem.GetWaypointCount();
+                    isMovingToNextArea = false;
+                    areaTimer = areaStayTime;
+                    // Set a random point in this area to patrol to
+                    targetPosition = locationMap.GetRandomPointInArea(currentAreaName);
                 }
             }
-        }
-    }
-
-    protected override void OnTriggerEnter(Collider other)
-    {
-        if (other.CompareTag("Player"))
-        {
-            PlayerController player = other.GetComponent<PlayerController>();
-            if (player != null)
+            else
             {
-                GameManager.Instance.LoseLife();
+                // Area not found, move to next one
+                currentAreaIndex = (currentAreaIndex + 1) % patrolAreaSequence.Length;
+            }
+        }
+        else
+        {
+            // Staying within the current area
+            MoveTowards(targetPosition);
+
+            // Check if we've reached the target point or timer expired
+            float distanceToTarget = Vector3.Distance(transform.position, targetPosition);
+            areaTimer -= Time.deltaTime;
+
+            if (distanceToTarget < waypointReachedDistance || areaTimer <= 0)
+            {
+                // Either we reached the point or time's up, move to next area
+                currentAreaIndex = (currentAreaIndex + 1) % patrolAreaSequence.Length;
+                isMovingToNextArea = true;
             }
         }
     }
 
-    protected override void OnDrawGizmosSelected()
+    private void SetNewAreaTarget()
     {
-        base.OnDrawGizmosSelected();
+        if (locationMap != null && patrolAreaSequence.Length > 0)
+        {
+            string currentAreaName = patrolAreaSequence[currentAreaIndex];
+            targetPosition = locationMap.GetRandomPointInArea(currentAreaName);
+        }
+    }
 
-        // Draw chase radius
-        Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(transform.position, chaseRadius);
-
-        // Draw lose interest distance
-        Gizmos.color = Color.green;
-        Gizmos.DrawWireSphere(transform.position, loseInterestDistance);
+    protected override void OnChaseEnd()
+    {
+        // Return to patrol state
+        currentState = AIState.Patrol;
     }
 }
