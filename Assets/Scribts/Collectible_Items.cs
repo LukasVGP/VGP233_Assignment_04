@@ -2,11 +2,9 @@ using UnityEngine;
 
 public class CollectibleItem : MonoBehaviour
 {
-    public string itemTag = "Key";
     [SerializeField] private float rotationSpeed = 50f;
     [SerializeField] private float hoverHeight = 0.5f;
     [SerializeField] private float hoverSpeed = 1f;
-    [SerializeField] private GameObject pickupEffect;
 
     private Vector3 startPosition;
 
@@ -29,26 +27,8 @@ public class CollectibleItem : MonoBehaviour
     {
         if (other.CompareTag("Player"))
         {
-            PlayerInventory inventory = other.GetComponent<PlayerInventory>();
-            if (inventory != null)
-            {
-                inventory.AddItem(itemTag);
-
-                // Notify GameManager about pickup
-                if (GameManager.Instance != null)
-                {
-                    GameManager.Instance.AddPickup();
-                }
-
-                // Spawn pickup effect if available
-                if (pickupEffect != null)
-                {
-                    Instantiate(pickupEffect, transform.position, Quaternion.identity);
-                }
-
-                // Destroy the collectible
-                Destroy(gameObject);
-            }
+            GameManager.Instance.AddPickup();
+            Destroy(gameObject);
         }
     }
 }

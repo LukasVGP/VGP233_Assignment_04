@@ -1,7 +1,5 @@
 using UnityEngine;
-using UnityEngine.SceneManagement;
-using TMPro;
-using System.Collections;
+using System;
 
 public class GameManager : MonoBehaviour
 {
@@ -10,48 +8,27 @@ public class GameManager : MonoBehaviour
     [Header("Game Settings")]
     [SerializeField] private int maxLives = 3;
     [SerializeField] private int currentLives;
-    [SerializeField] private float gameDuration = 300f; // 5 minutes in seconds
+    [SerializeField] private float gameDuration = 300f; // 5 minutes
     [SerializeField] private float currentTime;
-    [SerializeField] private bool isTimerRunning = false;
-
-    [Header("UI References")]
-    [SerializeField] private GameObject gameOverUI;
-    [SerializeField] private GameObject victoryUI;
-    [SerializeField] private GameObject gameplayUI;
-    [SerializeField] private TextMeshProUGUI timerText;
-    [SerializeField] private TextMeshProUGUI livesText;
-    [SerializeField] private TextMeshProUGUI pickupsText;
-
-    [Header("Simple UI")]
-    [SerializeField] private SimpleUIManager uiManager;
-
-    [Header("Scene Management")]
-    [SerializeField] private string mainMenuSceneName = "MainMenu";
-    [SerializeField] private string gameSceneName = "Game";
-
-    [Header("Player References")]
-    [SerializeField] private GameObject playerPrefab;
-    [SerializeField] private Transform playerSpawnPoint;
-
-    [Header("Level Settings")]
     [SerializeField] private int requiredCollectibles = 0;
     [SerializeField] private bool requireAllCollectibles = false;
 
-    [Header("Enemy Settings")]
-    [SerializeField] private Transform[] enemySpawnPoints;
-    [SerializeField] private GameObject[] enemyPrefabs;
-
-    [Header("Collectible Settings")]
-    [SerializeField] private Transform[] collectibleSpawnPoints;
-    [SerializeField] private GameObject[] collectiblePrefabs;
-
     private bool isGameOver = false;
+    private bool isGamePaused = false;
     private int collectedItems = 0;
     private int totalCollectibles = 0;
+    private bool isTimerRunning = false;
+
+    // Events
+    public event Action OnGameOver;
+    public event Action OnVictory;
+    public event Action OnLifeLost;
+    public event Action OnItemCollected;
+    public event Action<float> OnTimerUpdated;
 
     private void Awake()
     {
-        // Singleton pattern setup
+        // Singleton pattern
         if (Instance == null)
         {
             Instance = this;
@@ -64,45 +41,12 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    private void Start()
-    {
-        // Hide UI elements at start
-        SetupUI();
-
-        // Register for scene loaded events
-        SceneManager.sceneLoaded += OnSceneLoaded;
-    }
-
-    private void OnDestroy()
-    {
-        // Unregister from scene loaded events
-        SceneManager.sceneLoaded -= OnSceneLoaded;
-    }
-
-    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
-    {
-        if (scene.name == gameSceneName)
-        {
-            // Initialize level when game scene is loaded
-            InitializeLevel();
-        }
-    }
-
     private void Update()
     {
-        if (isTimerRunning && !isGameOver)
+        if (isTimerRunning && !isGameOver && !isGamePaused)
         {
             UpdateTimer();
         }
-    }
-
-    private void SetupUI()
-    {
-        if (gameOverUI) gameOverUI.SetActive(false);
-        if (victoryUI) victoryUI.SetActive(false);
-        if (gameplayUI) gameplayUI.SetActive(SceneManager.GetActiveScene().name == gameSceneName);
-        UpdateLivesUI();
-        UpdatePickupsUI();
     }
 
     private void InitializeGame()
@@ -110,137 +54,17 @@ public class GameManager : MonoBehaviour
         currentLives = maxLives;
         currentTime = gameDuration;
         isGameOver = false;
+        isGamePaused = false;
         collectedItems = 0;
         totalCollectibles = 0;
         isTimerRunning = false;
     }
 
-    private void InitializeLevel()
+    public void StartGame()
     {
-        // Spawn player
-        SpawnPlayer();
-
-        // Spawn enemies
-        SpawnEnemies();
-
-        // Spawn collectibles
-        SpawnCollectibles();
-
-        // Update UI
-        SetupUI();
-
-        // Start the timer
-        StartTimer();
-    }
-
-    private void SpawnPlayer()
-    {
-        // Find player spawn point if not set
-        if (playerSpawnPoint == null)
-        {
-            GameObject spawnPointObj = GameObject.FindGameObjectWithTag("PlayerSpawn");
-            if (spawnPointObj != null)
-            {
-                playerSpawnPoint = spawnPointObj.transform;
-            }
-        }
-
-        // Only spawn player if we have a spawn point and prefab
-        if (playerSpawnPoint != null && playerPrefab != null)
-        {
-            // Check if player already exists
-            GameObject existingPlayer = GameObject.FindGameObjectWithTag("Player");
-
-            if (existingPlayer == null)
-            {
-                Instantiate(playerPrefab, playerSpawnPoint.position, playerSpawnPoint.rotation);
-            }
-            else
-            {
-                // Move existing player to spawn point
-                existingPlayer.transform.position = playerSpawnPoint.position;
-                existingPlayer.transform.rotation = playerSpawnPoint.rotation;
-            }
-        }
-    }
-
-    private void SpawnEnemies()
-    {
-        // Only spawn enemies if we have spawn points and prefabs
-        if (enemySpawnPoints != null && enemySpawnPoints.Length > 0 &&
-            enemyPrefabs != null && enemyPrefabs.Length > 0)
-        {
-            // Clear existing enemies if needed
-            GameObject[] existingEnemies = GameObject.FindGameObjectsWithTag("Enemy");
-            foreach (GameObject enemy in existingEnemies)
-            {
-                Destroy(enemy);
-            }
-
-            // Spawn new enemies
-            for (int i = 0; i < enemySpawnPoints.Length; i++)
-            {
-                if (enemySpawnPoints[i] != null)
-                {
-                    // Select a random enemy prefab
-                    GameObject enemyPrefab = enemyPrefabs[Random.Range(0, enemyPrefabs.Length)];
-
-                    // Instantiate the enemy
-                    GameObject enemy = Instantiate(enemyPrefab, enemySpawnPoints[i].position, enemySpawnPoints[i].rotation);
-
-                    // Set enemy tag if it doesn't have one
-                    if (!enemy.CompareTag("Enemy"))
-                    {
-                        enemy.tag = "Enemy";
-                    }
-                }
-            }
-        }
-    }
-
-    private void SpawnCollectibles()
-    {
-        // Only spawn collectibles if we have spawn points and prefabs
-        if (collectibleSpawnPoints != null && collectibleSpawnPoints.Length > 0 &&
-            collectiblePrefabs != null && collectiblePrefabs.Length > 0)
-        {
-            // Clear existing collectibles if needed
-            GameObject[] existingCollectibles = GameObject.FindGameObjectsWithTag("Collectible");
-            foreach (GameObject collectible in existingCollectibles)
-            {
-                Destroy(collectible);
-            }
-
-            // Reset total collectibles count
-            totalCollectibles = 0;
-
-            // Spawn new collectibles
-            for (int i = 0; i < collectibleSpawnPoints.Length; i++)
-            {
-                if (collectibleSpawnPoints[i] != null)
-                {
-                    // Select a random collectible prefab
-                    GameObject collectiblePrefab = collectiblePrefabs[Random.Range(0, collectiblePrefabs.Length)];
-
-                    // Instantiate the collectible
-                    GameObject collectible = Instantiate(collectiblePrefab, collectibleSpawnPoints[i].position, collectibleSpawnPoints[i].rotation);
-
-                    // Set collectible tag if it doesn't have one
-                    if (!collectible.CompareTag("Collectible"))
-                    {
-                        collectible.tag = "Collectible";
-                    }
-
-                    totalCollectibles++;
-                }
-            }
-
-            // Update required collectibles if we're requiring all of them
-            if (requireAllCollectibles)
-            {
-                requiredCollectibles = totalCollectibles;
-            }
-        }
+        InitializeGame();
+        UIManager.Instance.ShowGameplayUI();
+        LevelManager.Instance.LoadGameLevel();
     }
 
     public void StartTimer()
@@ -252,28 +76,11 @@ public class GameManager : MonoBehaviour
     private void UpdateTimer()
     {
         currentTime -= Time.deltaTime;
+        OnTimerUpdated?.Invoke(currentTime);
+
         if (currentTime <= 0)
         {
             currentTime = 0;
-            TimerExpired();
-        }
-        UpdateTimerUI();
-    }
-
-    private void UpdateTimerUI()
-    {
-        if (timerText != null)
-        {
-            int minutes = Mathf.FloorToInt(currentTime / 60);
-            int seconds = Mathf.FloorToInt(currentTime % 60);
-            timerText.text = string.Format("Time: {0:00}:{1:00}", minutes, seconds);
-        }
-    }
-
-    private void TimerExpired()
-    {
-        if (!isGameOver)
-        {
             GameOver("Time's up!");
         }
     }
@@ -281,9 +88,10 @@ public class GameManager : MonoBehaviour
     public void LoseLife()
     {
         if (isGameOver) return;
+
         currentLives--;
-        UpdateLivesUI();
-        // Check if player is out of lives
+        OnLifeLost?.Invoke();
+
         if (currentLives <= 0)
         {
             GameOver("You ran out of lives!");
@@ -293,66 +101,31 @@ public class GameManager : MonoBehaviour
     public void AddPickup()
     {
         collectedItems++;
-        UpdatePickupsUI();
-
-        // Check if player has collected enough items to enable victory
-        if (HasCollectedRequiredItems() && requiredCollectibles > 0)
-        {
-            Debug.Log("Collected all required items!");
-        }
+        OnItemCollected?.Invoke();
     }
 
-    private void UpdateLivesUI()
+    public void SetTotalCollectibles(int count)
     {
-        if (livesText != null)
+        totalCollectibles = count;
+        if (requireAllCollectibles)
         {
-            livesText.text = "Lives: " + currentLives;
-        }
-    }
-
-    private void UpdatePickupsUI()
-    {
-        if (pickupsText != null)
-        {
-            if (requiredCollectibles > 0)
-            {
-                pickupsText.text = $"Items: {collectedItems}/{requiredCollectibles}";
-            }
-            else
-            {
-                pickupsText.text = "Items: " + collectedItems;
-            }
+            requiredCollectibles = totalCollectibles;
         }
     }
 
     public void GameOver(string reason = "Game Over!")
     {
         if (isGameOver) return;
+
         isGameOver = true;
         isTimerRunning = false;
         Debug.Log(reason);
 
-        // Show game over UI (legacy method)
-        if (gameOverUI)
-        {
-            gameOverUI.SetActive(true);
-            // Set reason text if available
-            TextMeshProUGUI reasonText = gameOverUI.GetComponentInChildren<TextMeshProUGUI>();
-            if (reasonText != null)
-            {
-                reasonText.text = reason;
-            }
-        }
-
-        // Show game over screen using SimpleUIManager
-        if (uiManager != null)
-        {
-            uiManager.ShowGameOver();
-        }
-
         // Unlock cursor
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+
+        OnGameOver?.Invoke();
     }
 
     public void Victory()
@@ -373,38 +146,27 @@ public class GameManager : MonoBehaviour
             isTimerRunning = false;
             Debug.Log("Victory!");
 
-            // Show victory UI (legacy method)
-            if (victoryUI) victoryUI.SetActive(true);
-
-            // Show victory screen using SimpleUIManager
-            if (uiManager != null)
-            {
-                uiManager.ShowVictory();
-            }
-
             // Unlock cursor
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
+
+            OnVictory?.Invoke();
         }
     }
 
-    public void RestartGame()
+    public void PauseGame()
     {
-        InitializeGame();
-        SceneManager.LoadScene(gameSceneName);
+        isGamePaused = true;
+        Time.timeScale = 0f;
     }
 
-    public void LoadMainMenu()
+    public void ResumeGame()
     {
-        SceneManager.LoadScene(mainMenuSceneName);
+        isGamePaused = false;
+        Time.timeScale = 1f;
     }
 
-    public void StartGame()
-    {
-        InitializeGame();
-        SceneManager.LoadScene(gameSceneName);
-    }
-
+    // Add this method to fix the error
     public void QuitGame()
     {
 #if UNITY_EDITOR
@@ -414,59 +176,21 @@ public class GameManager : MonoBehaviour
 #endif
     }
 
-    // Getter for current lives (for UI or other scripts)
-    public int GetCurrentLives()
-    {
-        return currentLives;
-    }
+    // Getters
+    public int GetCurrentLives() => currentLives;
+    public int GetMaxLives() => maxLives;
+    public int GetCollectedItems() => collectedItems;
+    public float GetRemainingTime() => currentTime;
+    public int GetTotalCollectibles() => totalCollectibles;
+    public int GetRequiredCollectibles() => requiredCollectibles;
+    public bool HasCollectedRequiredItems() => collectedItems >= requiredCollectibles;
+    public bool IsGameOver() => isGameOver;
+    public bool IsGamePaused() => isGamePaused;
 
-    // Getter for max lives
-    public int GetMaxLives()
-    {
-        return maxLives;
-    }
-
-    // Getter for collected items
-    public int GetCollectedItems()
-    {
-        return collectedItems;
-    }
-
-    // Getter for remaining time
-    public float GetRemainingTime()
-    {
-        return currentTime;
-    }
-
-    // Getter for total collectibles in level
-    public int GetTotalCollectibles()
-    {
-        return totalCollectibles;
-    }
-
-    // Getter for required collectibles
-    public int GetRequiredCollectibles()
-    {
-        return requiredCollectibles;
-    }
-
-    // Check if player has collected required items
-    public bool HasCollectedRequiredItems()
-    {
-        return collectedItems >= requiredCollectibles;
-    }
-
-    // Set game duration (can be called from other scripts)
+    // Setters
     public void SetGameDuration(float duration)
     {
         gameDuration = duration;
         currentTime = duration;
-    }
-
-    // Called when level is loaded
-    public void OnLevelLoaded()
-    {
-        SetupUI();
-        StartTimer();
     }
 }

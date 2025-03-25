@@ -2,10 +2,7 @@ using UnityEngine;
 
 public class GoalTrigger : MonoBehaviour
 {
-    [SerializeField] private bool requiresKey = false;
-    [SerializeField] private string requiredKeyTag = "Key";
     [SerializeField] private int requiredItemCount = 1;
-    [SerializeField] private GameObject visualIndicator;
     [SerializeField] private Material lockedMaterial;
     [SerializeField] private Material unlockedMaterial;
 
@@ -21,57 +18,23 @@ public class GoalTrigger : MonoBehaviour
     {
         if (other.CompareTag("Player"))
         {
-            bool canExit = true;
-
-            // Check if key is required
-            if (requiresKey)
-            {
-                PlayerInventory inventory = other.GetComponent<PlayerInventory>();
-                if (inventory == null || !inventory.HasItem(requiredKeyTag))
-                {
-                    Debug.Log("You need a key to exit!");
-                    canExit = false;
-                }
-            }
-
-            // Check if specific number of items is required
-            if (requiredItemCount > 0 && GameManager.Instance != null)
-            {
-                if (GameManager.Instance.GetCollectedItems() < requiredItemCount)
-                {
-                    Debug.Log($"You need to collect {requiredItemCount} items to exit!");
-                    canExit = false;
-                }
-            }
-
-            // Check if player has lives remaining
-            if (canExit && GameManager.Instance != null && GameManager.Instance.GetCurrentLives() > 0)
+            if (GameManager.Instance.GetCollectedItems() >= requiredItemCount)
             {
                 GameManager.Instance.Victory();
+            }
+            else
+            {
+                Debug.Log($"You need to collect {requiredItemCount} items to exit!");
             }
         }
     }
 
     private void UpdateVisualState()
     {
-        if (exitRenderer != null && visualIndicator != null)
+        if (exitRenderer != null)
         {
-            bool isUnlocked = true;
+            bool isUnlocked = GameManager.Instance.GetCollectedItems() >= requiredItemCount;
 
-            // Check if key requirement is met
-            if (requiresKey && GameManager.Instance != null)
-            {
-                PlayerInventory inventory = FindObjectOfType<PlayerInventory>();
-                isUnlocked = (inventory != null && inventory.HasItem(requiredKeyTag));
-            }
-
-            // Check if item count requirement is met
-            if (requiredItemCount > 0 && GameManager.Instance != null)
-            {
-                isUnlocked = isUnlocked && (GameManager.Instance.GetCollectedItems() >= requiredItemCount);
-            }
-
-            // Update visual state
             if (isUnlocked && unlockedMaterial != null)
             {
                 exitRenderer.material = unlockedMaterial;
@@ -85,7 +48,6 @@ public class GoalTrigger : MonoBehaviour
 
     private void Update()
     {
-        // Update visual state every frame to reflect current game state
         UpdateVisualState();
     }
 }

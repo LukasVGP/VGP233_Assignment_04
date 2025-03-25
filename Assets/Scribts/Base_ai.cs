@@ -17,46 +17,22 @@ public class BaseAI : MonoBehaviour
     [SerializeField] protected Transform playerTransform;
     [SerializeField] protected LayerMask obstacleLayer;
     [SerializeField] protected float gravity = 20f;
-    [SerializeField] protected bool useCharacterController = false;
 
     protected AIState currentState = AIState.Idle;
     protected Vector3 targetPosition;
     protected CharacterController characterController;
-    protected Rigidbody rigidBody;
-    protected CapsuleCollider capsuleCollider;
     protected float verticalVelocity = 0f;
-    protected bool isGrounded = true;
 
     protected virtual void Awake()
     {
-        // Try to get components
         characterController = GetComponent<CharacterController>();
-        rigidBody = GetComponent<Rigidbody>();
-        capsuleCollider = GetComponent<CapsuleCollider>();
 
-        // If we don't have a CharacterController and we're set to use one, add it
-        if (useCharacterController && characterController == null)
+        if (characterController == null)
         {
             characterController = gameObject.AddComponent<CharacterController>();
             characterController.height = 2.0f;
             characterController.radius = 0.5f;
             characterController.center = new Vector3(0, 1.0f, 0);
-        }
-        // If we're not using CharacterController, make sure we have a collider
-        else if (!useCharacterController && capsuleCollider == null)
-        {
-            capsuleCollider = gameObject.AddComponent<CapsuleCollider>();
-            capsuleCollider.height = 2.0f;
-            capsuleCollider.radius = 0.5f;
-            capsuleCollider.center = new Vector3(0, 1.0f, 0);
-
-            // Add a rigidbody if we don't have one
-            if (rigidBody == null)
-            {
-                rigidBody = gameObject.AddComponent<Rigidbody>();
-                rigidBody.constraints = RigidbodyConstraints.FreezeRotation;
-                rigidBody.collisionDetectionMode = CollisionDetectionMode.Continuous;
-            }
         }
 
         if (playerTransform == null)
@@ -70,21 +46,7 @@ public class BaseAI : MonoBehaviour
     protected virtual void Update()
     {
         UpdateState();
-
-        // Only use Update for movement if using CharacterController
-        if (useCharacterController)
-        {
-            UpdateBehavior();
-        }
-    }
-
-    protected virtual void FixedUpdate()
-    {
-        // Use FixedUpdate for physics-based movement
-        if (!useCharacterController && rigidBody != null)
-        {
-            UpdateBehavior();
-        }
+        UpdateBehavior();
     }
 
     protected virtual void UpdateState()
@@ -106,14 +68,12 @@ public class BaseAI : MonoBehaviour
 
         if (distanceToPlayer <= detectionRadius)
         {
-            // Check if there's an obstacle between AI and player
             Ray ray = new Ray(transform.position + Vector3.up, directionToPlayer.normalized);
             if (!Physics.Raycast(ray, distanceToPlayer, obstacleLayer))
             {
                 return true;
             }
         }
-
         return false;
     }
 
@@ -129,52 +89,20 @@ public class BaseAI : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
 
             // Move towards the target
-            if (useCharacterController && characterController != null)
+            Vector3 movement = transform.forward * moveSpeed;
+
+            // Apply gravity
+            if (characterController.isGrounded)
             {
-                // Use CharacterController for movement
-                Vector3 movement = transform.forward * moveSpeed;
-
-                // Apply gravity
-                if (characterController.isGrounded)
-                {
-                    verticalVelocity = -0.5f;
-                }
-                else
-                {
-                    verticalVelocity -= gravity * Time.deltaTime;
-                }
-
-                movement.y = verticalVelocity;
-                characterController.Move(movement * Time.deltaTime);
-            }
-            else if (rigidBody != null)
-            {
-                // Use Rigidbody for movement
-                Vector3 movement = transform.forward * moveSpeed;
-
-                // Check if grounded
-                isGrounded = Physics.Raycast(transform.position, Vector3.down, capsuleCollider.height * 0.5f + 0.1f);
-
-                // Apply gravity
-                if (!isGrounded)
-                {
-                    verticalVelocity -= gravity * Time.deltaTime;
-                }
-                else
-                {
-                    verticalVelocity = -0.5f;
-                }
-
-                // Set velocity directly
-                Vector3 velocity = movement;
-                velocity.y = verticalVelocity;
-                rigidBody.linearVelocity = velocity;
+                verticalVelocity = -0.5f;
             }
             else
             {
-                // Fallback to simple transform movement
-                transform.position += transform.forward * moveSpeed * Time.deltaTime;
+                verticalVelocity -= gravity * Time.deltaTime;
             }
+
+            movement.y = verticalVelocity;
+            characterController.Move(movement * Time.deltaTime);
         }
     }
 
@@ -182,29 +110,7 @@ public class BaseAI : MonoBehaviour
     {
         if (other.CompareTag("Player"))
         {
-            if (GameManager.Instance != null)
-            {
-                GameManager.Instance.LoseLife();
-            }
-            else
-            {
-                Debug.LogError("GameManager.Instance is null. Make sure you have a GameManager in your scene.");
-            }
-        }
-    }
-
-    protected virtual void OnCollisionEnter(Collision collision)
-    {
-        if (collision.gameObject.CompareTag("Player"))
-        {
-            if (GameManager.Instance != null)
-            {
-                GameManager.Instance.LoseLife();
-            }
-            else
-            {
-                Debug.LogError("GameManager.Instance is null. Make sure you have a GameManager in your scene.");
-            }
+            GameManager.Instance.GameOver();
         }
     }
 

@@ -62,7 +62,8 @@ public class WandererAI : BaseAI
         }
     }
 
-    protected override void OnCollisionEnter(Collision collision)
+    // Removed 'override' keyword since BaseAI doesn't have this method
+    private void OnCollisionEnter(Collision collision)
     {
         if (collision.gameObject.CompareTag("Player"))
         {
